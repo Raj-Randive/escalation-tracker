@@ -1,6 +1,7 @@
 using { escalations as db } from '../db/schema';
 
 service EscalationService {
+  @odata.draft.enabled
   entity Escalations as projection on db.Escalations;
   entity Actions     as projection on db.Actions;
   @readonly entity Status  as projection on db.Status;
