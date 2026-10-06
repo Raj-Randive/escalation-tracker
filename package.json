@@ -19,5 +19,33 @@
   ],
   "name": "escalation-tracker",
   "version": "1.0.0",
-  "private": true
+  "private": true,
+  "cds": {
+    "requires": {
+      "auth": {
+        "[development]": {
+          "kind": "mocked",
+          "users": {
+            "agent": {
+              "password": "agent",
+              "roles": [
+                "Agent"
+              ]
+            },
+            "manager": {
+              "password": "manager",
+              "roles": [
+                "Manager"
+              ]
+            },
+            "guest": {
+              "password": "guest",
+              "roles": []
+            },
+            "*": false
+          }
+        }
+      }
+    }
+  }
 }
