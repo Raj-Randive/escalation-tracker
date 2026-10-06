@@ -22,9 +22,13 @@ annotate service.Escalations with @(
   UI.LineItem: [
     { Value: title },
     { Value: status_code },
-    { Value: urgency_code },
+    { Value: urgency_code, Criticality: urgencyCriticality },
     { Value: dueDate },
-    { Value: customer }
+    { Value: customer },
+    { $Type: 'UI.DataFieldForAction', Action: 'EscalationService.close', Label: 'Close' }
+  ],
+  UI.Identification: [
+    { $Type: 'UI.DataFieldForAction', Action: 'EscalationService.close', Label: 'Close' }
   ],
   UI.FieldGroup #General: { Data: [
     { Value: title },
@@ -32,7 +36,7 @@ annotate service.Escalations with @(
   ]},
   UI.FieldGroup #Details: { Data: [
     { Value: status_code },
-    { Value: urgency_code },
+    { Value: urgency_code, Criticality: urgencyCriticality },
     { Value: dueDate },
     { Value: customer }
   ]},
@@ -59,3 +63,8 @@ annotate service.Actions with @(
     { Value: done }
   ]
 );
+
+// Refresh the status on screen after the Close button runs
+annotate service.Escalations actions {
+  close @Common.SideEffects: { TargetProperties: ['in/status_code'] };
+};
