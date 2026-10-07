@@ -10,6 +10,7 @@ entity Escalations : cuid, managed {
   dueDate     : Date;
   urgencyCriticality : Integer = case urgency.code when 'H' then 1 when 'M' then 2 when 'L' then 3 else 0 end;
   customer    : String(10);
+  customerName: String(81);
   actions     : Composition of many Actions on actions.escalation = $self;
 }
 

@@ -7,7 +7,15 @@ annotate service.Escalations with {
   status      @title: 'Status'   @Common.Text: status.name  @Common.TextArrangement: #TextOnly  @Common.ValueListWithFixedValues;
   urgency     @title: 'Urgency'  @Common.Text: urgency.name @Common.TextArrangement: #TextOnly @Common.ValueListWithFixedValues;
   dueDate     @title: 'Due Date';
-  customer    @title: 'Customer';
+  customer    @title: 'Customer'  @Common.Text: customerName  @Common.TextArrangement: #TextFirst
+              @Common.ValueList: {
+                CollectionPath: 'Customers',
+                Parameters: [
+                  { $Type: 'Common.ValueListParameterInOut',       LocalDataProperty: customer, ValueListProperty: 'ID' },
+                  { $Type: 'Common.ValueListParameterDisplayOnly', ValueListProperty: 'name' }
+                ]
+              };
+  customerName @title: 'Customer Name'  @readonly;
 };
 
 // Page-level annotations: what goes where
@@ -67,4 +75,9 @@ annotate service.Actions with @(
 // Refresh the status on screen after the Close button runs
 annotate service.Escalations actions {
   close @Common.SideEffects: { TargetProperties: ['in/status_code'] };
+};
+
+annotate service.Customers with {
+  ID   @title: 'Customer ID';
+  name @title: 'Customer Name';
 };

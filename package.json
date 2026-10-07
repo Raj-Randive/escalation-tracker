@@ -1,6 +1,9 @@
 {
   "dependencies": {
-    "@sap/cds": "^10.1.1"
+    "@sap/cds": "^10.1.1",
+    "@sap-cloud-sdk/connectivity": "^4",
+    "@sap-cloud-sdk/http-client": "^4",
+    "@sap-cloud-sdk/resilience": "^4"
   },
   "workspaces": [
     "app/*"
@@ -45,6 +48,10 @@
             "*": false
           }
         }
+      },
+      "API_BUSINESS_PARTNER": {
+        "kind": "odata-v2",
+        "model": "srv/external/API_BUSINESS_PARTNER"
       }
     }
   }

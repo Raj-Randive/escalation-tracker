@@ -1,4 +1,4 @@
-ID,title,description,status_code,urgency_code,dueDate
-a1b2c3d4-0001-4000-8000-000000000001,Production line stopped,Customer reports sensor failure on line 3,I,H,2026-10-10
-a1b2c3d4-0002-4000-8000-000000000002,Invoice mismatch,Invoice total differs from order total,N,M,2026-10-20
-a1b2c3d4-0003-4000-8000-000000000003,Delayed spare parts,Shipment stuck in customs,C,L,2026-09-30
+ID,title,description,status_code,urgency_code,dueDate,customer,customerName
+a1b2c3d4-0001-4000-8000-000000000001,Production line stopped,Customer reports sensor failure on line 3,I,H,2026-10-10,1000020,Fast Bikes Inc.
+a1b2c3d4-0002-4000-8000-000000000002,Invoice mismatch,Invoice total differs from order total,N,M,2026-10-20,1000032,Avante Limited
+a1b2c3d4-0003-4000-8000-000000000003,Delayed spare parts,Shipment stuck in customs,C,L,2026-09-30,1000039,Horizon Air
