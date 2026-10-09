@@ -1,0 +1,385 @@
+# Service Escalation Tracker
+
+[![Tests](https://github.com/Raj-Randive/escalation-tracker/actions/workflows/test.yml/badge.svg)](https://github.com/Raj-Randive/escalation-tracker/actions/workflows/test.yml)
+
+A full-stack **SAP CAP** (Cloud Application Programming Model) application in which support agents log customer escalations, track follow-up actions and close them once they are resolved. Customers come live from **SAP S/4HANA** (Business Partner API). The app runs on **SAP BTP, Cloud Foundry** with SAP HANA Cloud, XSUAA login and an approuter.
+
+It is a learning project (a *capstone*) that follows the SAP Learning course
+[Develop Extensions with CAP Following the SAP BTP Developer's Guide](https://learning.sap.com/courses/develop-extensions-with-cap-following-the-sap-btp-developer-s-guide) and implements every unit of it in one application. The plan is in [`docs/study-guide.md`](docs/study-guide.md).
+
+---
+
+## Contents
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [Tech stack](#tech-stack)
+- [Project structure](#project-structure)
+- [Run locally](#run-locally)
+- [Tests and CI](#tests-and-ci)
+- [Deploy to SAP BTP (Cloud Foundry)](#deploy-to-sap-btp-cloud-foundry)
+- [Troubleshooting](#troubleshooting)
+- [How it was built](#how-it-was-built)
+- [Lessons learned](#lessons-learned)
+
+---
+
+## Features
+
+| Area | What the app does |
+|---|---|
+| **Data model** | Escalations with status, urgency, due date and customer; follow-up actions as a composition; translatable code lists |
+| **UI** | SAP Fiori elements List Report + Object Page, generated from annotations; draft editing (Edit → Save / Discard) |
+| **Business logic** | Due date must not be in the past *when it is set or changed*; bound action **Close** with a status guard (409 if already closed); urgency colours via a calculated element |
+| **Security** | Roles **Agent** (read, create, update, close) and **Manager** (everything, including delete); enforced on the server with `@requires` / `@restrict` |
+| **S/4HANA integration** | Customer value help and name lookup from the **Business Partner API** (OData V2): local mock, SAP sandbox, or a BTP destination in production, all with the same code |
+| **Quality** | 18 automated API tests with `cds.test`, run on every push by GitHub Actions |
+| **Cloud** | Deployed as a multitarget application (MTA) to SAP BTP Cloud Foundry with HANA Cloud, XSUAA, approuter, HTML5 Application Repository and Destination service |
+
+---
+
+## Architecture
+
+```
+ Browser
+   │ https://<subdomain>-<space>-escalation-tracker.cfapps.<region>.hana.ondemand.com
+   ▼
+ ┌──────────────────────┐   not logged in?   ┌─────────┐
+ │ Approuter            │ ─────────────────► │ XSUAA   │  SAP login → token with roles
+ │ (.deploy/app-router) │ ◄───────────────── └─────────┘
+ └──┬────────────────┬──┘
+    │ /escalations/… │ /odata/v4/escalation/…  (+ user token)
+    ▼                ▼
+ HTML5 App Repo   ┌──────────────────────────┐        ┌──────────────────┐
+ (Fiori UI)       │ escalation-tracker-srv   │──────► │ SAP HANA Cloud   │
+                  │ CAP service (Node.js)    │        │ (HDI container)  │
+                  └────────────┬─────────────┘        └──────────────────┘
+                               │ destination "API_BUSINESS_PARTNER"
+                               ▼
+                  Destination service ──► S/4HANA Business Partner API
+```
+
+The same code runs in four configurations, selected by CAP **profiles**:
+
+| | `cds watch` | `cds watch --profile sandbox` | `cds watch --profile hybrid` | Production on BTP |
+|---|---|---|---|---|
+| Database | SQLite (in memory) | SQLite (in memory) | **HANA Cloud** (bound) | **HANA Cloud** |
+| Login | mocked users | mocked users | mocked users | **XSUAA** |
+| S/4HANA | **mock** (CSV) | **SAP sandbox** + API key | mock | **BTP destination** |
+
+---
+
+## Tech stack
+
+- **SAP CAP** (`@sap/cds` 10, Node.js 24), CDS modelling, OData V4
+- **SAP Fiori elements** (SAPUI5), Fiori tools
+- **SAP HANA Cloud** (`@cap-js/hana`), SQLite for development (`@cap-js/sqlite`)
+- **XSUAA** (`@sap/xssec`), SAP Application Router
+- **SAP Cloud SDK** for remote OData V2 calls and destinations
+- **Testing:** `@cap-js/cds-test` with the Node.js test runner; GitHub Actions
+- **Deployment:** MTA Build Tool (`mbt`), Cloud Foundry CLI with the MultiApps plugin
+
+---
+
+## Project structure
+
+```
+escalation-tracker/
+├── db/
+│   ├── schema.cds                     Entities: Escalations, Actions, Status, Urgency
+│   └── data/                          Seed data (CSV, loaded into SQLite and HANA)
+├── srv/
+│   ├── escalation-service.cds         The OData service, draft, Close action, Customers projection
+│   ├── escalation-service.js          Event handlers: validation, Close, S/4HANA lookup
+│   ├── access-control.cds             Roles: @requires / @restrict
+│   └── external/
+│       ├── API_BUSINESS_PARTNER.edmx  S/4HANA API definition (from api.sap.com)
+│       ├── API_BUSINESS_PARTNER.cds   Generated by `cds import`, never edit by hand
+│       └── data/                      Mock business partners for local development
+├── app/
+│   ├── services.cds                   Pulls the UI annotations into the model
+│   └── escalations/                   Fiori elements app
+│       ├── annotations.cds            UI: columns, filters, sections, value helps, buttons
+│       ├── webapp/                    manifest.json, index.html, Component.js
+│       ├── xs-app.json                Routing inside the HTML5 repository
+│       └── ui5.yaml                   UI build (zipped for the HTML5 repository)
+├── test/
+│   └── escalation-service.test.js     18 API tests (cds.test)
+├── .deploy/app-router/                Approuter: package.json + xs-app.json
+├── .github/workflows/test.yml         CI: npm ci + npm test on every push
+├── mta.yaml                           Deployment descriptor (modules + BTP services)
+├── xs-security.json                   XSUAA scopes and role templates (Agent, Manager)
+├── package.json                       Dependencies, scripts, CAP configuration and profiles
+└── docs/study-guide.md                Course summary and capstone plan
+```
+
+---
+
+## Run locally
+
+### Prerequisites
+
+- **Node.js 24** (CDS 10 needs Node ≥ 22.15; with nvm: `nvm install 24`)
+- **CAP development kit:** `npm install -g @sap/cds-dk`
+- Recommended VS Code extensions: *SAP CDS Language Support*, *SAP Fiori tools – Extension Pack*
+
+### Start
+
+```bash
+git clone https://github.com/Raj-Randive/escalation-tracker.git
+cd escalation-tracker
+npm install
+cds watch
+```
+
+Open **http://localhost:4004** and choose the *escalations* web application, or go directly to
+`http://localhost:4004/escalations/webapp/index.html`.
+
+### Test users (mocked, development only)
+
+| User | Password | Role | Can |
+|---|---|---|---|
+| `agent` | `agent` | Agent | read, create, edit, close (not delete) |
+| `manager` | `manager` | Manager | everything |
+| `guest` | `guest` | none | nothing (403) |
+
+Use a private browser window to switch users, because browsers remember basic-auth logins.
+
+### Use the real SAP S/4HANA sandbox (optional)
+
+By default the Business Partner API is **mocked** from `srv/external/data/`. To use SAP's public sandbox instead:
+
+1. Log in at **https://api.sap.com/api/API_BUSINESS_PARTNER/overview** and click **Show API Key**.
+2. Create `.cdsrc-private.json` in the project root (it is git-ignored, so **never commit your key**):
+
+   ```json
+   {
+     "requires": {
+       "[sandbox]": {
+         "API_BUSINESS_PARTNER": {
+           "credentials": {
+             "url": "https://sandbox.api.sap.com/s4hanacloud/sap/opu/odata/sap/API_BUSINESS_PARTNER/",
+             "headers": { "APIKey": "<your-api-key>" }
+           }
+         }
+       }
+     }
+   }
+   ```
+
+3. Start with `cds watch --profile sandbox`. The log says `connect to API_BUSINESS_PARTNER > odata-v2` instead of `mocking`.
+
+### Try the API
+
+```bash
+curl -u agent:agent "http://localhost:4004/odata/v4/escalation/Escalations?\$filter=IsActiveEntity eq true&\$expand=status,urgency"
+curl -u agent:agent "http://localhost:4004/odata/v4/escalation/Customers?\$search=Air"
+```
+
+---
+
+## Tests and CI
+
+```bash
+npm test
+```
+
+18 tests start the whole app in memory (SQLite, mocked S/4HANA, no API key needed) and call the real OData endpoints:
+
+- authentication and authorization (401, 403, agent vs manager delete)
+- seed data, code list names and urgency criticality
+- due date validation (new, unchanged, changed to the past)
+- Close action (success and 409 when closing twice)
+- S/4HANA customers (list, search, name copied on save, client value ignored, unknown customer rejected)
+
+GitHub Actions ([`.github/workflows/test.yml`](.github/workflows/test.yml)) runs `npm ci` and `npm test` on every push to `main` and on every pull request.
+
+---
+
+## Deploy to SAP BTP (Cloud Foundry)
+
+These steps deploy the app to **your own** SAP BTP account. They work with a free **BTP Trial** account. Region `us10` is used as the example; use the values shown in your own cockpit.
+
+### What gets created
+
+`cf deploy` creates these Cloud Foundry apps and services in your space:
+
+| Name | Type | Purpose |
+|---|---|---|
+| `escalation-tracker` | app (256 MB) | Approuter: public URL and login |
+| `escalation-tracker-srv` | app (1 GB) | The CAP service |
+| `escalation-tracker-db-deployer` | app (runs once, then stops) | Creates tables in HANA and loads seed data |
+| `escalation-tracker-auth` | xsuaa / application | Login, roles and role collections |
+| `escalation-tracker-db` | hana / hdi-shared | Your HDI container in HANA Cloud |
+| `escalation-tracker-destination` | destination / lite | Access to the S/4HANA destination |
+| `escalation-tracker-html5-repo-host` / `-runtime` | html5-apps-repo | Stores and serves the Fiori UI |
+
+### Step 1: Install the tools
+
+```bash
+npm install -g mbt                       # MTA Build Tool
+```
+
+Install the **Cloud Foundry CLI v8**: https://github.com/cloudfoundry/cli/wiki/V8-CLI-Installation-Guide
+(on Ubuntu, add the `packages.cloudfoundry.org` apt repository, then `sudo apt install cf8-cli`).
+
+```bash
+cf install-plugin multiapps -f           # adds "cf deploy"
+cf version && cf plugins && mbt --version
+```
+
+### Step 2: Prepare the BTP account
+
+1. Sign up for a trial at **https://www.sap.com/products/technology-platform/trial.html** and open the cockpit:
+   **https://account.hanatrial.ondemand.com/trial/#/home/trial** → **Go To Your Trial Account** → subaccount **trial**.
+2. On the subaccount **Overview**, note the Cloud Foundry **API Endpoint**, **Org Name** and **Org ID**, and check that a space **dev** exists.
+3. **Entitlements**: make sure these plans are assigned (add them with **Edit → Add Service Plans** if missing):
+
+   | Service | Plan |
+   |---|---|
+   | SAP HANA Cloud | `hana`, `tools` |
+   | SAP HANA Schemas & HDI Containers | `hdi-shared` |
+   | Authorization and Trust Management Service | `application` |
+   | Destination Service | `lite` |
+   | HTML5 Application Repository Service | `app-host`, `app-runtime` |
+
+### Step 3: Create SAP HANA Cloud
+
+Tutorial with screenshots: https://developers.sap.com/tutorials/hana-cloud-deploying.html
+
+1. **Services → Service Marketplace → SAP HANA Cloud → Create**, plan **tools** (subscription).
+2. **Security → Users** → your user → **Assign Role Collection** → **SAP HANA Cloud Administrator**. Log out of the cockpit and back in.
+3. **Services → Instances and Subscriptions → SAP HANA Cloud → Go to Application** opens *SAP HANA Cloud Central* (bookmark it).
+4. **Create Instance → SAP HANA Database**:
+   - instance name, e.g. `escalation-db`, and an administrator password
+   - **Allowed connections: Allow all IP addresses**
+   - **Instance mapping: Cloud Foundry**, *Environment Instance ID* = your **Org ID**. Leave the Space ID empty, or enter the space GUID from `cf space dev --guid` (not the space name).
+   - Data Lake is not needed; **Create Instance**.
+5. Wait until the status is **Running** (about 10–15 minutes).
+
+> **Trial note:** a trial HANA instance stops every night. Start it again in HANA Cloud Central before using the app.
+
+### Step 4: Create the S/4HANA destination
+
+**Connectivity → Destinations → Create → From Scratch**:
+
+| Field | Value |
+|---|---|
+| Name | `API_BUSINESS_PARTNER` (must match exactly) |
+| Type | HTTP |
+| URL | `https://sandbox.api.sap.com` |
+| Proxy Type | Internet |
+| Authentication | NoAuthentication |
+| Additional property | `URL.headers.APIKey` = your API key from https://api.sap.com/api/API_BUSINESS_PARTNER/overview |
+
+The app appends `/s4hanacloud/sap/opu/odata/sap/API_BUSINESS_PARTNER` (configured in `package.json` under `[production]`). To connect to a real S/4HANA system instead, point the destination at that system and use its authentication method.
+
+### Step 5: Build and deploy
+
+```bash
+npm install
+mbt build -t gen --mtar mta.tar
+cf login -a https://api.cf.us10-001.hana.ondemand.com     # your API endpoint; add --sso if password login fails
+cf target -s dev
+cf deploy gen/mta.tar
+```
+
+The deploy takes about 5–10 minutes. The last lines print the app URL:
+
+```
+Application "escalation-tracker" started and available at "<…>-dev-escalation-tracker.cfapps.us10-001.hana.ondemand.com"
+```
+
+Check with `cf apps` (`escalation-tracker` and `escalation-tracker-srv` **started**; the db-deployer **stopped** is correct) and `cf services`.
+
+### Step 6: Assign a role
+
+**Security → Users** → your user → **Assign Role Collection** →
+`Manager (escalation-tracker <org>-dev)` or `Agent (escalation-tracker <org>-dev)`.
+These role collections are created by the deployment (see `mta.yaml`).
+
+### Step 7: Open the app
+
+Open the app URL from Step 5 in a **new private window**, log in with your SAP account, and you land on the Fiori app.
+Roles are part of the login token, so after changing role collections, always start a new session.
+
+### Redeploy after changes
+
+```bash
+mbt build -t gen --mtar mta.tar && cf deploy gen/mta.tar
+```
+
+### Remove everything
+
+```bash
+cf undeploy escalation-tracker --delete-services --delete-service-keys
+```
+
+This deletes the apps, the services and the HDI container (including its data).
+
+### Hybrid testing (local app + real HANA)
+
+To debug against the deployed HANA database without redeploying:
+
+```bash
+cds bind db --to escalation-tracker-db     # creates a service key, saved in .cdsrc-private.json under [hybrid]
+cds watch --profile hybrid
+```
+
+Careful: changes made in hybrid mode go to the real database.
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `cds watch` fails with `registerHooks is not a function` | Node.js too old for CDS 10 | Use Node 24 (`nvm install 24`) and reinstall `@sap/cds-dk` |
+| Blank page after login on BTP | Token without roles (`cf logs` shows *lacking required roles*) | Assign a role collection, then open a **new** private window |
+| *Internal Server Error* on the list | Check `cf logs escalation-tracker-srv --recent` | HANA stopped (start it in HANA Cloud Central) or an SQL error in the log |
+| Customer value help fails / *No credentials configured for API_BUSINESS_PARTNER* | Destination missing or misspelled | Step 4; the name must be exactly `API_BUSINESS_PARTNER` |
+| `cf deploy` fails at the `hana` service | HANA not running or not mapped to the org | Step 3 (mapping, status Running) |
+| `cf deploy` says *not entitled* | Missing entitlement | Step 2.3 |
+| `npm test` hangs | The Fiori preview plugin keeps the process alive | The test file sets `CDS_PLUGIN_UI5_ACTIVE=false` (keep it) |
+| 404s for `/sap/bc/lrep/flex/...` in the browser | Fiori looks for UI personalization (only in a launchpad) | Harmless, ignore |
+
+Useful commands: `cf logs <app> --recent`, `cf mta escalation-tracker`, `cds env requires --profile production`.
+
+---
+
+## How it was built
+
+The app grew step by step, each step adding one layer:
+
+| Step | What was added |
+|---|---|
+| 1. Model and service | CDS data model (`cuid`, `managed`, `CodeList`, association, composition), OData service, CSV seed data |
+| 2. Fiori UI | Fiori elements List Report + Object Page, draft, UI annotations |
+| 3. Business logic | Due date validation, Close action with status guard, urgency criticality, side effects |
+| 4. Authorization | Agent / Manager roles with `@requires` and `@restrict`, mocked users |
+| 5. External service | S/4HANA Business Partner API: `cds import`, mock, sandbox, value help, name lookup |
+| 6. Tests | 18 `cds.test` API tests, GitHub Actions CI |
+| 7. Deployment | HANA Cloud, XSUAA, approuter, HTML5 repo, destination, MTA, `cf deploy`, hybrid testing |
+| 8. SAP Build Work Zone | *Next:* launchpad tile for the app |
+
+---
+
+## Lessons learned
+
+- **Model first, code second.** Most behaviour (CRUD, draft, value helps, security) comes from CDS and annotations; JavaScript is only for real business rules.
+- **Code says *what*, configuration says *where*.** `cds.connect.to('API_BUSINESS_PARTNER')` works unchanged against a mock, the sandbox and a BTP destination; profiles decide.
+- **Validate input, not stored data.** The due date rule only fires when the date is set or changed, so old escalations can still be edited.
+- **The server enforces security.** The UI shows a Delete button to agents; the server answers 403.
+- **SQLite is not HANA.** A calculated element with a *simple* `CASE` worked on SQLite but produced invalid SQL on HANA in draft queries; the *searched* `CASE` works on both. Hybrid testing found and verified the fix without redeploying.
+- **Remote APIs differ.** The S/4HANA OData V2 API rejects free-text `$search`, so the service turns a search into a `contains()` filter (`substringof` in V2).
+- **Read the logs.** `cf logs <app> --recent` explained both production issues (missing roles in the token, the HANA SQL error).
+- **Keep secrets out of git.** API keys and bindings live in the git-ignored `.cdsrc-private.json` locally and in a BTP destination in the cloud.
+
+---
+
+## Learn more
+
+- CAP documentation (capire): https://cap.cloud.sap/docs/
+- SAP Learning course: https://learning.sap.com/courses/develop-extensions-with-cap-following-the-sap-btp-developer-s-guide
+- SAP Business Accelerator Hub: https://api.sap.com
+- SAP Developers tutorials: https://developers.sap.com/tutorial-navigator.html
