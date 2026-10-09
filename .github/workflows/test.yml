@@ -1,0 +1,26 @@
+# Runs the CAP test suite on GitHub for every push to main and every pull request
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies (exact versions from package-lock.json)
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
