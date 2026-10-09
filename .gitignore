@@ -19,3 +19,6 @@ mta_archives/
 @cds-models
 
 .vscode/
+
+# UI build output (created by the MTA build)
+app/*/dist/

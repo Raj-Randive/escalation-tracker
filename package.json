@@ -1,9 +1,11 @@
 {
   "dependencies": {
+    "@cap-js/hana": "^3",
     "@sap-cloud-sdk/connectivity": "^4",
     "@sap-cloud-sdk/http-client": "^4",
     "@sap-cloud-sdk/resilience": "^4",
-    "@sap/cds": "^10.1.1"
+    "@sap/cds": "^10.1.1",
+    "@sap/xssec": "^4"
   },
   "workspaces": [
     "app/*"
@@ -11,6 +13,7 @@
   "devDependencies": {
     "@cap-js/cds-test": "^1.0.2",
     "@cap-js/sqlite": "^3.1.1",
+    "@sap/cds-dk": "^10",
     "cds-plugin-ui5": "^0.17.0"
   },
   "scripts": {
@@ -53,8 +56,22 @@
       },
       "API_BUSINESS_PARTNER": {
         "kind": "odata-v2",
-        "model": "srv/external/API_BUSINESS_PARTNER"
-      }
+        "model": "srv/external/API_BUSINESS_PARTNER",
+        "[production]": {
+          "credentials": {
+            "destination": "API_BUSINESS_PARTNER",
+            "path": "/s4hanacloud/sap/opu/odata/sap/API_BUSINESS_PARTNER"
+          }
+        }
+      },
+      "[production]": {
+        "auth": {
+          "kind": "xsuaa"
+        },
+        "db": "hana"
+      },
+      "destinations": true,
+      "html5-repo": true
     }
   }
 }

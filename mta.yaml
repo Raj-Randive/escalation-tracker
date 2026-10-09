@@ -1,0 +1,141 @@
+_schema-version: 3.3.0
+ID: escalation-tracker
+version: 1.0.0
+description: "A simple CAP project."
+parameters:
+  enable-parallel-deployments: true
+  deploy_mode: html5-repo
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npm ci
+        - npx cds build --production
+modules:
+  - name: escalation-tracker-srv
+    type: nodejs
+    path: gen/srv
+    parameters:
+      instances: 1
+      buildpack: nodejs_buildpack
+    build-parameters:
+      builder: npm-ci
+    provides:
+      - name: srv-api # required by consumers of CAP services (e.g. approuter)
+        properties:
+          srv-url: ${default-url}
+    requires:
+      - name: escalation-tracker-auth
+      - name: escalation-tracker-db
+      - name: escalation-tracker-destination
+
+  - name: escalation-tracker-db-deployer
+    type: hdb
+    path: gen/db
+    parameters:
+      buildpack: nodejs_buildpack
+    requires:
+      - name: escalation-tracker-db
+  - name: escalation-tracker
+    type: approuter.nodejs
+    path: .deploy/app-router
+    build-parameters:
+      ignore: ["default-env.json", "node_modules/"] # local-only test settings must not be deployed
+    parameters:
+      keep-existing-routes: true
+      disk-quota: 256M
+      memory: 256M
+    requires:
+      - name: srv-api
+        group: destinations
+        properties:
+          name: srv-api # must be used in xs-app.json as well
+          url: ~{srv-url}
+          forwardAuthToken: true
+      - name: escalation-tracker-auth
+      - name: escalation-tracker-destination
+      - name: escalation-tracker-html5-runtime
+    provides:
+      - name: app-api
+        properties:
+          app-protocol: ${protocol}
+          app-uri: ${default-uri}
+
+  - name: escalation-tracker-app-deployer
+    type: com.sap.application.content
+    path: gen
+    build-parameters:
+      build-result: app/
+      requires:
+        - name: escalationtrackerescalations
+          artifacts:
+            - escalations.zip
+          target-path: app/
+    requires:
+      - name: escalation-tracker-auth
+      - name: srv-api
+      - name: escalation-tracker-html5-repo-host
+        parameters:
+          content-target: true
+          config:
+            HTML5Runtime_enabled: true
+
+  - name: escalationtrackerescalations
+    type: html5
+    path: app/escalations
+    build-parameters:
+      build-result: dist
+      builder: custom
+      commands: # dependencies are already installed by "npm ci" in before-all (app/* is an npm workspace)
+        - npm run build
+      supported-platforms:
+        []
+
+resources:
+  - name: escalation-tracker-auth
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+      config:
+        xsappname: escalation-tracker-${org}-${space}
+        tenant-mode: dedicated
+        oauth2-configuration:
+          credential-types:
+            - "binding-secret"
+            - "x509"
+          redirect-uris:
+            - https://*~{app-api/app-uri}/**
+        role-collections:
+          - name: 'Agent (escalation-tracker ${org}-${space})'
+            description: 'generated'
+            role-template-references:
+              - '$XSAPPNAME.Agent'
+          - name: 'Manager (escalation-tracker ${org}-${space})'
+            description: 'generated'
+            role-template-references:
+              - '$XSAPPNAME.Manager'
+    requires:
+      - name: app-api
+  - name: escalation-tracker-db
+    type: com.sap.xs.hdi-container
+    parameters:
+      service: hana
+      service-plan: hdi-shared
+  - name: escalation-tracker-destination
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: destination
+      service-plan: lite
+
+  - name: escalation-tracker-html5-repo-host
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: html5-apps-repo
+      service-plan: app-host
+  - name: escalation-tracker-html5-runtime
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: html5-apps-repo
+      service-plan: app-runtime
